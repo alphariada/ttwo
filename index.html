@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TTWO</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none;
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
     font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
   .wrap { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
   .name { position: absolute; top: 6vh; left: 0; right: 0; text-align: center;
@@ -17,6 +17,20 @@
   .closed { margin-top: 3vh; color: #8a8a8a; font-size: 3.5vh; letter-spacing: .3em;
     text-transform: uppercase; visibility: hidden; }
   .closed.show { visibility: visible; }
+  .fs { position: fixed; top: 2.5vh; right: 2vw; background: transparent; color: #555;
+    border: 1px solid #333; border-radius: 6px; font-size: 2.2vh; padding: .4em .8em;
+    cursor: pointer; opacity: .7; transition: opacity .5s; }
+  .fs:hover, .fs:focus { color: #aaa; border-color: #666; outline: none; opacity: 1; }
+  .fs.hide { opacity: 0; pointer-events: none; }
+  body.idle { cursor: none; }
+  .foot { position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between;
+    align-items: center; padding: 2.5vh 2.5vw; font-size: 2.6vh; color: #9aa7b4; }
+  .status { display: flex; align-items: center; gap: .6em; }
+  .dot { width: .8em; height: .8em; border-radius: 50%; background: #6b7785; }
+  .dot.open { background: #2ecc71; box-shadow: 0 0 .6em #2ecc71; }
+  .dot.ext { background: #f1c40f; }
+  .clocks span { margin-left: 1.5em; }
+  .clocks b { color: #e6edf3; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -25,6 +39,14 @@
   <div class="price" id="price">…</div>
   <div class="closed" id="closed">Piață închisă</div>
 </div>
+<div class="foot">
+  <div class="status"><div class="dot" id="dot"></div><span id="status">—</span></div>
+  <div class="clocks">
+    <span>București <b id="roTime">--:--</b></span>
+    <span>New York <b id="nyTime">--:--</b></span>
+  </div>
+</div>
+<button class="fs" id="fs">⛶ Ecran complet</button>
 
 <script>
   // ===== PUNE CHEIA DE LA FINNHUB AICI =====
@@ -34,7 +56,7 @@
   var SYMBOL = "TTWO";
   var priceEl = document.getElementById("price");
   var closedEl = document.getElementById("closed");
-  var marketOpen = null;
+  var marketOpen = null, session = null;
 
   // Prețul de referință fix: egal = gri, peste = verde, sub = roșu
   var base = 226.00;
@@ -53,7 +75,7 @@
   function render(p) {
     priceEl.textContent = "$" + p.toFixed(2);
     priceEl.className = "price";
-    var open = (marketOpen === null) ? localMarketOpen() : marketOpen;
+    var open = (marketOpen === null) ? localMarketOpen() : (marketOpen && (!session || session === "regular"));
     closedEl.className = open ? "closed" : "closed show";
     if (!open) return;           // închis → gri
     if (p > base) priceEl.className = "price up";       // peste referință → verde
@@ -78,11 +100,59 @@
     fetch("https://finnhub.io/api/v1/stock/market-status?exchange=US&token=" + KEY)
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (d && typeof d.isOpen === "boolean") marketOpen = d.isOpen;
+        if (d && typeof d.isOpen === "boolean") { marketOpen = d.isOpen; session = d.session || null; }
+        footer();
         if (last !== null) render(last);
       })
       .catch(function () { marketOpen = null; });
   }
+
+  // Buton ecran complet (dispare în fullscreen și după 5 s fără mișcare)
+  var fsBtn = document.getElementById("fs"), idleT;
+  function isFs() { return !!(document.fullscreenElement || document.webkitFullscreenElement) || window.innerHeight >= screen.height - 2; }
+  function toggleFs() {
+    var el = document.documentElement;
+    if (!isFs()) { (el.requestFullscreen || el.webkitRequestFullscreen || function(){}).call(el); }
+    else { (document.exitFullscreen || document.webkitExitFullscreen || function(){}).call(document); }
+  }
+  function wake() {
+    document.body.classList.remove("idle");
+    fsBtn.classList.toggle("hide", !!isFs());
+    clearTimeout(idleT);
+    idleT = setTimeout(function () { document.body.classList.add("idle"); fsBtn.classList.add("hide"); }, 5000);
+  }
+  fsBtn.addEventListener("click", toggleFs);
+  document.addEventListener("mousemove", wake);
+  document.addEventListener("keydown", function (e) { if ((e.key === "Enter" || e.keyCode === 13) && e.target !== fsBtn) toggleFs(); wake(); });
+  document.addEventListener("fullscreenchange", wake);
+  document.addEventListener("webkitfullscreenchange", wake);
+  window.addEventListener("resize", wake);
+  wake();
+
+  // Footer: status bursă + ceasuri
+  function hm(tz) { return new Date().toLocaleTimeString("ro-RO", { timeZone: tz, hour: "2-digit", minute: "2-digit" }); }
+  function nyInfo() {
+    var p = {};
+    new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "numeric", hour12: false })
+      .formatToParts(new Date()).forEach(function (x) { p[x.type] = x.value; });
+    return { we: p.weekday === "Sat" || p.weekday === "Sun", m: (parseInt(p.hour, 10) % 24) * 60 + parseInt(p.minute, 10) };
+  }
+  function footer() {
+    document.getElementById("roTime").textContent = hm("Europe/Bucharest");
+    document.getElementById("nyTime").textContent = hm("America/New_York");
+    var dot = document.getElementById("dot"), st = document.getElementById("status");
+    var ses = session;
+    if (marketOpen === null) {
+      var n = nyInfo();
+      ses = n.we ? null : (n.m >= 570 && n.m < 960) ? "regular" : (n.m >= 240 && n.m < 570) ? "pre-market" : (n.m >= 960 && n.m < 1200) ? "post-market" : null;
+    } else if (marketOpen && !ses) { ses = "regular"; }
+    dot.className = "dot";
+    if (ses === "regular") { st.textContent = "NASDAQ deschis"; dot.className = "dot open"; }
+    else if (ses === "pre-market") { st.textContent = "Pre-market"; dot.className = "dot ext"; }
+    else if (ses === "post-market") { st.textContent = "After-hours"; dot.className = "dot ext"; }
+    else { st.textContent = "Bursa închisă"; }
+  }
+  footer(); setInterval(footer, 15000);
 
   loadStatus(); loadPrice();
   setInterval(loadPrice, 5000);    // preț la 5 secunde
