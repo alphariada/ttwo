@@ -104,10 +104,15 @@
   }
 
   var last = null, lastWs = 0;
-  function markUpdate() {
-    document.getElementById("upd").textContent = "Ultimul update: " +
-      new Date().toLocaleTimeString("ro-RO", { timeZone: "Europe/Bucharest", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  var lastUpd = 0;
+  function markUpdate() { lastUpd = Date.now(); showUpd(); }
+  function showUpd() {
+    var el = document.getElementById("upd");
+    if (!lastUpd) { el.textContent = "Ultimul update: —"; return; }
+    var t = Math.floor((Date.now() - lastUpd) / 1000);
+    el.textContent = "Ultimul update: acum " + (t < 60 ? t + " s" : t < 3600 ? Math.floor(t / 60) + " min " + (t % 60) + " s" : Math.floor(t / 3600) + " h " + Math.floor(t % 3600 / 60) + " min");
   }
+  setInterval(showUpd, 1000);
 
   // Preț în timp real: fiecare tranzacție TTWO vine instant prin WebSocket
   function connectWs() {
