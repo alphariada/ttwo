@@ -40,6 +40,7 @@
   .dot.open { background: #2ecc71; box-shadow: 0 0 .6em #2ecc71; }
   .dot.ext { background: #f1c40f; }
   .clocks span { margin-left: 1.5em; }
+  .upd { position: absolute; left: 0; right: 0; text-align: center; color: #5c5c5c; font-size: 2.4vh; pointer-events: none; }
   .clocks b { color: #e6edf3; font-weight: 600; }
 </style>
 </head>
@@ -56,6 +57,7 @@
   <div class="gta"><small>GTA VI în România</small><span id="gta">--</span></div>
 </div>
 <div class="foot">
+  <div class="upd" id="upd">Ultimul update: —</div>
   <div class="status"><div class="dot" id="dot"></div><span id="status">—</span></div>
   <div class="clocks">
     <span>București <b id="roTime">--:--</b></span>
@@ -101,15 +103,40 @@
     else if (p < base) priceEl.className = "price down"; // sub referință → roșu
   }
 
-  var last = null;
+  var last = null, lastWs = 0;
+  function markUpdate() {
+    document.getElementById("upd").textContent = "Ultimul update: " +
+      new Date().toLocaleTimeString("ro-RO", { timeZone: "Europe/Bucharest", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+
+  // Preț în timp real: fiecare tranzacție TTWO vine instant prin WebSocket
+  function connectWs() {
+    if (KEY === "PUNE_CHEIA_AICI" || !window.WebSocket) return;
+    var ws;
+    try { ws = new WebSocket("wss://ws.finnhub.io?token=" + KEY); } catch (e) { setTimeout(connectWs, 10000); return; }
+    ws.onopen = function () { ws.send(JSON.stringify({ type: "subscribe", symbol: SYMBOL })); };
+    ws.onmessage = function (ev) {
+      try {
+        var m = JSON.parse(ev.data);
+        if (m.type === "trade" && m.data && m.data.length) {
+          var t = m.data[m.data.length - 1];
+          if (t.p) { last = t.p; lastWs = Date.now(); render(last); markUpdate(); }
+        }
+      } catch (e) {}
+    };
+    ws.onclose = function () { setTimeout(connectWs, 5000); };
+    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+  }
   function loadPrice() {
     if (KEY === "PUNE_CHEIA_AICI") { priceEl.style.fontSize = "5vh"; priceEl.textContent = "Lipsește cheia Finnhub"; return; }
-    fetch("https://finnhub.io/api/v1/quote?symbol=" + SYMBOL + "&token=" + KEY)
+    // Rezervă: dacă WebSocket-ul n-a trimis nimic în ultimele 15 s, ia prețul prin REST
+    if (Date.now() - lastWs < 15000) return;
+    fetch("https://finnhub.io/api/v1/quote?symbol=" + SYMBOL + "&token=" + KEY + "&_=" + Date.now(), { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (!d || !d.c) return;
+        if (!d || !d.c || Date.now() - lastWs < 15000) return;
         last = d.c;
-        render(last);
+        render(last); markUpdate();
       })
       .catch(function () {});
   }
@@ -184,7 +211,7 @@
   }
   gta(); setInterval(gta, 1000);
 
-  loadStatus(); loadPrice();
+  loadStatus(); loadPrice(); connectWs();
   setInterval(loadPrice, 5000);    // preț la 5 secunde
   setInterval(loadStatus, 60000);  // status piață la 1 minut
   // reîncărcare la 3 ore
