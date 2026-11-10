@@ -40,7 +40,6 @@
   .dot.open { background: #2ecc71; box-shadow: 0 0 .6em #2ecc71; }
   .dot.ext { background: #f1c40f; }
   .clocks span { margin-left: 1.5em; }
-  .upd { position: absolute; left: 0; right: 0; text-align: center; color: #5c5c5c; font-size: 2.4vh; pointer-events: none; }
   .clocks b { color: #e6edf3; font-weight: 600; }
 </style>
 </head>
@@ -57,7 +56,6 @@
   <div class="gta"><small>GTA VI în România</small><span id="gta">--</span></div>
 </div>
 <div class="foot">
-  <div class="upd" id="upd">Ultimul update: —</div>
   <div class="status"><div class="dot" id="dot"></div><span id="status">—</span></div>
   <div class="clocks">
     <span>București <b id="roTime">--:--</b></span>
@@ -104,21 +102,6 @@
   }
 
   var last = null, lastWs = 0;
-  var lastUpd = 0;
-  // Timerul pornește de la 0 doar când serverul trimite date noi (alt preț sau altă tranzacție),
-  // nu la fiecare cerere care primește același preț vechi
-  var lastTs = 0, lastP = null;
-  function markUpdate(ts, p) {
-    if ((ts && ts !== lastTs) || p !== lastP) { lastTs = ts; lastP = p; lastUpd = Date.now(); showUpd(); }
-  }
-  function showUpd() {
-    var el = document.getElementById("upd");
-    if (!lastUpd) { el.textContent = "Ultimul update: —"; return; }
-    var t = Math.floor((Date.now() - lastUpd) / 1000);
-    var live = Date.now() - lastWs < 15000;
-    el.textContent = (live ? "● Live · " : "") + "Ultimul update: acum " + (t < 60 ? t + " s" : t < 3600 ? Math.floor(t / 60) + " min " + (t % 60) + " s" : Math.floor(t / 3600) + " h " + Math.floor(t % 3600 / 60) + " min");
-  }
-  setInterval(showUpd, 1000);
 
   // Preț în timp real: fiecare tranzacție TTWO vine instant prin WebSocket
   function connectWs() {
@@ -131,7 +114,7 @@
         var m = JSON.parse(ev.data);
         if (m.type === "trade" && m.data && m.data.length) {
           var t = m.data[m.data.length - 1];
-          if (t.p) { last = t.p; lastWs = Date.now(); render(last); markUpdate(t.t, t.p); }
+          if (t.p) { last = t.p; lastWs = Date.now(); render(last); }
         }
       } catch (e) {}
     };
@@ -147,7 +130,7 @@
       .then(function (d) {
         if (!d || !d.c || Date.now() - lastWs < 15000) return;
         last = d.c;
-        render(last); markUpdate(d.t ? d.t * 1000 : 0, d.c);
+        render(last);
       })
       .catch(function () {});
   }
