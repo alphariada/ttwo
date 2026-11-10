@@ -3,102 +3,92 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TTWO live</title>
+<title>TTWO</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #0b0f14; color: #e6edf3;
-    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; overflow: hidden; cursor: none; }
-  .wrap { display: flex; flex-direction: column; height: 100vh; padding: 2vh 2.5vw; box-sizing: border-box; gap: 1.5vh; }
-  .top { display: flex; justify-content: space-between; align-items: center; font-size: 2.6vh; color: #9aa7b4; }
-  .status { display: flex; align-items: center; gap: .6em; }
-  .dot { width: .8em; height: .8em; border-radius: 50%; background: #6b7785; }
-  .dot.open { background: #2ecc71; box-shadow: 0 0 .6em #2ecc71; }
-  .dot.ext { background: #f1c40f; }
-  .clocks span { margin-left: 1.5em; }
-  .clocks b { color: #e6edf3; font-weight: 600; }
-  .info { height: 22vh; }
-  .chart { flex: 1; min-height: 0; border-radius: 12px; overflow: hidden; }
-  .tradingview-widget-container, .tradingview-widget-container__widget { height: 100%; width: 100%; }
-  .tradingview-widget-copyright { display: none; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; cursor: none;
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .wrap { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+  .name { position: absolute; top: 6vh; left: 0; right: 0; text-align: center;
+    color: #8a8a8a; font-size: 4.5vh; letter-spacing: .25em; text-transform: uppercase; }
+  .price { font-size: 24vw; font-weight: 700; line-height: 1; color: #8a8a8a;
+    font-variant-numeric: tabular-nums; transition: color .4s; }
+  .price.up { color: #00d26a; }
+  .price.down { color: #ff3b3b; }
+  .closed { margin-top: 3vh; color: #8a8a8a; font-size: 3.5vh; letter-spacing: .3em;
+    text-transform: uppercase; visibility: hidden; }
+  .closed.show { visibility: visible; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="top">
-    <div class="status"><div class="dot" id="dot"></div><span id="status">—</span></div>
-    <div class="clocks">
-      <span>București <b id="roTime">--:--</b></span>
-      <span>New York <b id="nyTime">--:--</b></span>
-    </div>
-  </div>
-
-  <!-- Preț + variație -->
-  <div class="info">
-    <div class="tradingview-widget-container">
-      <div class="tradingview-widget-container__widget"></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-info.js" async>
-      {
-        "symbol": "NASDAQ:TTWO",
-        "width": "100%",
-        "locale": "en",
-        "colorTheme": "dark",
-        "isTransparent": true
-      }
-      </script>
-    </div>
-  </div>
-
-  <!-- Grafic intraday -->
-  <div class="chart">
-    <div class="tradingview-widget-container">
-      <div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
-      {
-        "autosize": true,
-        "symbol": "NASDAQ:TTWO",
-        "interval": "5",
-        "timezone": "Europe/Bucharest",
-        "theme": "dark",
-        "style": "3",
-        "locale": "en",
-        "backgroundColor": "rgba(11, 15, 20, 1)",
-        "hide_top_toolbar": true,
-        "hide_side_toolbar": true,
-        "hide_volume": true,
-        "allow_symbol_change": false,
-        "save_image": false,
-        "calendar": false,
-        "support_host": "https://www.tradingview.com"
-      }
-      </script>
-    </div>
-  </div>
+  <div class="name">Take-Two Interactive · TTWO</div>
+  <div class="price" id="price">…</div>
+  <div class="closed" id="closed">Piață închisă</div>
 </div>
 
 <script>
-  function hm(tz) {
-    return new Date().toLocaleTimeString('ro-RO', { timeZone: tz, hour: '2-digit', minute: '2-digit' });
-  }
-  function nyParts() {
+  // ===== PUNE CHEIA DE LA FINNHUB AICI =====
+  var KEY = "dbpk3t9r01qr0r9o046gdbpk3t9r01qr0r9o0470";
+  // ==========================================
+
+  var SYMBOL = "TTWO";
+  var priceEl = document.getElementById("price");
+  var closedEl = document.getElementById("closed");
+  var marketOpen = null;
+
+  // Prețul de referință fix: egal = gri, peste = verde, sub = roșu
+  var base = 226.00;
+
+  // Rezervă, dacă API-ul de status nu răspunde: ore NASDAQ (fără sărbători)
+  function localMarketOpen() {
     var p = {};
-    new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', minute: 'numeric', hour12: false })
+    new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short",
+      hour: "numeric", minute: "numeric", hour12: false })
       .formatToParts(new Date()).forEach(function (x) { p[x.type] = x.value; });
-    return { day: p.weekday, min: (parseInt(p.hour, 10) % 24) * 60 + parseInt(p.minute, 10) };
+    if (p.weekday === "Sat" || p.weekday === "Sun") return false;
+    var m = (parseInt(p.hour, 10) % 24) * 60 + parseInt(p.minute, 10);
+    return m >= 570 && m < 960;
   }
-  function tick() {
-    document.getElementById('roTime').textContent = hm('Europe/Bucharest');
-    document.getElementById('nyTime').textContent = hm('America/New_York');
-    var n = nyParts(), weekend = (n.day === 'Sat' || n.day === 'Sun');
-    var dot = document.getElementById('dot'), s = document.getElementById('status');
-    dot.className = 'dot';
-    if (weekend) { s.textContent = 'Bursa închisă (weekend)'; }
-    else if (n.min >= 570 && n.min < 960) { s.textContent = 'NASDAQ deschis'; dot.className = 'dot open'; }
-    else if (n.min >= 240 && n.min < 570) { s.textContent = 'Pre-market'; dot.className = 'dot ext'; }
-    else if (n.min >= 960 && n.min < 1200) { s.textContent = 'After-hours'; dot.className = 'dot ext'; }
-    else { s.textContent = 'Bursa închisă'; }
+
+  function render(p) {
+    priceEl.textContent = "$" + p.toFixed(2);
+    priceEl.className = "price";
+    var open = (marketOpen === null) ? localMarketOpen() : marketOpen;
+    closedEl.className = open ? "closed" : "closed show";
+    if (!open) return;           // închis → gri
+    if (p > base) priceEl.className = "price up";       // peste referință → verde
+    else if (p < base) priceEl.className = "price down"; // sub referință → roșu
   }
-  tick(); setInterval(tick, 15000);
-  // Reîncarcă pagina la 3 ore, ca browserul TV-ului să nu se îngreuneze în timp
-  setTimeout(function () { location.reload(); }, 3 * 60 * 60 * 1000);
+
+  var last = null;
+  function loadPrice() {
+    if (KEY === "PUNE_CHEIA_AICI") { priceEl.style.fontSize = "5vh"; priceEl.textContent = "Lipsește cheia Finnhub"; return; }
+    fetch("https://finnhub.io/api/v1/quote?symbol=" + SYMBOL + "&token=" + KEY)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.c) return;
+        last = d.c;
+        render(last);
+      })
+      .catch(function () {});
+  }
+
+  function loadStatus() {
+    if (KEY === "PUNE_CHEIA_AICI") return;
+    fetch("https://finnhub.io/api/v1/stock/market-status?exchange=US&token=" + KEY)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && typeof d.isOpen === "boolean") marketOpen = d.isOpen;
+        if (last !== null) render(last);
+      })
+      .catch(function () { marketOpen = null; });
+  }
+
+  loadStatus(); loadPrice();
+  setInterval(loadPrice, 5000);    // preț la 5 secunde
+  setInterval(loadStatus, 60000);  // status piață la 1 minut
+  // reîncărcare la 3 ore
+  setTimeout(function () { location.href = location.pathname; }, 3 * 60 * 60 * 1000);
 </script>
 </body>
 </html>
