@@ -105,9 +105,12 @@
 
   var last = null, lastWs = 0;
   var lastUpd = 0;
-  // ts = momentul real al datelor (ora tranzacției de la Finnhub), nu momentul în care le-am cerut
-  var lastTs = 0;
-  function markUpdate(ts) { if (ts && ts !== lastTs) { lastTs = ts; lastUpd = Math.min(ts, Date.now()); showUpd(); } }
+  // Timerul pornește de la 0 doar când serverul trimite date noi (alt preț sau altă tranzacție),
+  // nu la fiecare cerere care primește același preț vechi
+  var lastTs = 0, lastP = null;
+  function markUpdate(ts, p) {
+    if ((ts && ts !== lastTs) || p !== lastP) { lastTs = ts; lastP = p; lastUpd = Date.now(); showUpd(); }
+  }
   function showUpd() {
     var el = document.getElementById("upd");
     if (!lastUpd) { el.textContent = "Ultimul update: —"; return; }
@@ -128,7 +131,7 @@
         var m = JSON.parse(ev.data);
         if (m.type === "trade" && m.data && m.data.length) {
           var t = m.data[m.data.length - 1];
-          if (t.p) { last = t.p; lastWs = Date.now(); render(last); markUpdate(t.t); }
+          if (t.p) { last = t.p; lastWs = Date.now(); render(last); markUpdate(t.t, t.p); }
         }
       } catch (e) {}
     };
@@ -144,7 +147,7 @@
       .then(function (d) {
         if (!d || !d.c || Date.now() - lastWs < 15000) return;
         last = d.c;
-        render(last); markUpdate(d.t ? d.t * 1000 : 0);
+        render(last); markUpdate(d.t ? d.t * 1000 : 0, d.c);
       })
       .catch(function () {});
   }
